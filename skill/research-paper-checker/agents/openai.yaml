@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Paper Checker"
+  short_description: "Check PDF and LaTeX citation metadata with evidence"
+  default_prompt: "Use $research-paper-checker to audit every citation in this PDF or LaTeX project."

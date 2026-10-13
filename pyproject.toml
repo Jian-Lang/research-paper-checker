@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hallu-cite-checker"
+version = "0.1.0"
+description = "Evidence-based citation metadata audit for PDF and LaTeX papers"
+requires-python = ">=3.10"
+dependencies = ["bibtexparser>=1.4,<2", "pypdf>=5,<7", "pylatexenc>=2.10,<3"]
+
+[project.optional-dependencies]
+dev = ["PyYAML>=6,<7"]
+
+[project.scripts]
+hallu-cite-checker = "hallu_cite_checker.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hallu_cite_checker*"]
