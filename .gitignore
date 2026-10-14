@@ -7,4 +7,4 @@ audit-runs/
 *.pdf
 *.png
 .DS_Store
-skill/research-paper-checker/scripts/installation.json
+hallu-cite-checker/skill/research-paper-checker/scripts/installation.json

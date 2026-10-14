@@ -5,13 +5,11 @@ import os
 from pathlib import Path
 import sys
 
-
 def within_output(path, root):
     resolved = Path(path).expanduser().resolve()
     if resolved == root or not resolved.is_relative_to(root):
         raise ValueError('Run directory must be below the configured output root')
     return resolved
-
 
 def main():
     installation = Path(__file__).with_name('installation.json')
@@ -25,14 +23,7 @@ def main():
     if not argv or argv[0] in ('-h', '--help'):
         from hallu_cite_checker.cli import main as cli
         return cli(argv)
-    if argv[0] == 'self-test':
-        import subprocess
-        if len(argv) != 1:
-            raise ValueError('self-test takes no arbitrary arguments')
-        return subprocess.call([sys.executable,'-I','-B','-m','unittest','discover','-s',
-                                str(Path(__file__).with_name('tests')),'-v'], cwd=root)
-    allowed = {'pdf', 'latex', 'replay', 'check', 'refine', 'preview', 'capture', 'write-json', 'open-report',
-               'confirm-coverage', 'add-evidence', 'fetch', 'discover', 'audit'}
+    allowed = {'pdf', 'latex', 'replay', 'check', 'refine', 'preview', 'capture', 'write-json', 'open-report', 'confirm-coverage', 'add-evidence', 'fetch', 'discover', 'audit'}
     command = argv[0]
     if command not in allowed:
         raise ValueError('Unsupported installed-skill action')
@@ -46,8 +37,6 @@ def main():
                 within_output(arg.partition('=')[2], root)
     from hallu_cite_checker.cli import main as cli
     return cli(argv)
-
-
 if __name__ == '__main__':
     try:
         sys.exit(main())

@@ -1,43 +1,37 @@
 # Research Paper Checker
 
-Evidence-based citation checks for PDF papers and LaTeX / Overleaf projects.
+A modular project for checking research papers.
 
-**hallu-cite-checker** checks reference metadata: titles, authors, years, venues, identifiers and supplied bibliographic fields. It does not evaluate whether a citation supports a claim.
+**Available now: hallu-cite-checker**, a citation metadata checker for PDF papers and LaTeX / Overleaf projects. It compares reference titles, authors, years, venues and identifiers with trusted sources. It does not assess whether citations support claims.
 
-## Install
+## Project
 
-Requires Python 3.10+, Codex CLI and Poppler.
+```text
+research-paper-checker/
+└── hallu-cite-checker/
+    ├── hallu_cite_checker/  Runtime
+    ├── skill/              Codex skill
+    └── scripts/            Installer
+```
+
+All current checker files live in `hallu-cite-checker/`. Additional checking modules are planned; they are not implemented yet.
+
+## Get Started
+
+Requires macOS, Python 3.10+, Codex CLI and Poppler.
 
 ```sh
-git clone git@github.com:Jian-Lang/research-paper-checker.git
-cd research-paper-checker
+git clone https://github.com/Jian-Lang/research-paper-checker.git
+cd research-paper-checker/hallu-cite-checker
 python3 scripts/install_skill.py
 ```
 
-Installation sets up the runtime, skill, output directory and a scoped Codex command rule. Restart Codex once to load the rule. All audit actions use that authorized entry; the tool never requests additional permissions during a run. Managed policy can override local rules.
-
-## Use
-
-In Codex:
+Restart Codex after the one-time setup, then ask:
 
 > Use research-paper-checker to check the citations in /path/to/paper.pdf.
 
-The skill checks every reference, reviews bibliography coverage, and opens the HTML report. Each run also exports Markdown and JSON with source evidence.
+Each audit exports HTML, Markdown and JSON. Incomplete evidence blocks a pass; no result guarantees universal accuracy. Managed Codex policies may override the installed command rule.
 
-PDF automation currently supports continuously numbered author-year bibliographies. Other PDF layouts and LaTeX projects use the skill's reviewed extraction workflow.
+[Checker guide](hallu-cite-checker/README.md) · [Skill](hallu-cite-checker/skill/research-paper-checker/SKILL.md)
 
-## Decisions
-
-| Result | Meaning |
-| --- | --- |
-| Verified | Metadata matches trusted evidence. |
-| Rejected | A confirmed metadata conflict. |
-| Unverified | Evidence or extraction remains incomplete. |
-
-Actual Google Scholar citation exports, official publishers, proceedings, Crossref and arXiv are trusted sources. Conference claims require the corresponding published or accepted version. PDF formatting is resolved from original line breaks and source evidence.
-
-Every rejected or unverified entry blocks a pass. Missing optional source fields are disclosed. No result is a universal guarantee of correctness.
-
-[Skill instructions](skill/research-paper-checker/SKILL.md) · [Workflow](skill/research-paper-checker/references/hallu-cite-checker.md)
-
-Input papers, reports and machine-specific configuration stay outside Git.
+This external distribution excludes internal tests, sample papers, audit reports and local configuration.
