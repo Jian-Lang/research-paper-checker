@@ -195,6 +195,11 @@ def verify(pdf, bundle, output, installed, rule, policy, log):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-root', default=str(PROJECT/'audit-runs'))
+    parser.add_argument('--codex-home', type=Path, default=Path.home()/'.codex')
+    parser.add_argument('--runtime-root', type=Path,
+                        default=Path.home()/'.local/share/hallu-cite-checker')
+    parser.add_argument('--config', type=Path,
+                        default=Path.home()/'.config/hallu-cite-checker/config.json')
     parser.add_argument('--verify-pdf', type=Path)
     parser.add_argument('--bundle', type=Path)
     args = parser.parse_args()
@@ -204,18 +209,19 @@ def main():
         raise RuntimeError('Install Poppler/pdftotext during setup first')
     output = Path(args.output_root).expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
-    runtime_root = Path.home()/'.local/share/hallu-cite-checker'
+    runtime_root = args.runtime_root.expanduser().resolve()
     runtime_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     log = runtime_root/('install-' + stamp + '.log')
     source = runtime_root/('source-' + stamp)
     snapshot(source)
     python = build_runtime(runtime_root/'runtime', source, log)
-    skill = Path.home()/'.codex/skills/research-paper-checker'
+    codex_home = args.codex_home.expanduser().resolve()
+    skill = codex_home/'skills/research-paper-checker'
     copy_skill(skill)
-    config = Path.home()/'.config/hallu-cite-checker/config.json'
+    config = args.config.expanduser().resolve()
     installed = configure_installation(skill, python, output, config)
-    rule = Path.home()/'.codex/rules/hallu-cite-checker.rules'
+    rule = codex_home/'rules/hallu-cite-checker.rules'
     rule.parent.mkdir(parents=True, exist_ok=True)
     rule.write_text('# Installed hallu-cite-checker only; no arbitrary Python allowance.\n' +
                     'prefix_rule(pattern=' + json.dumps(installed['command_prefix']) +
