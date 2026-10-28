@@ -1,10 +1,13 @@
+.local/
 .venv/
 __pycache__/
 *.egg-info/
 build/
 dist/
-audit-runs/
+audit-runs
+REPORTS/*
+!REPORTS/.gitkeep
 *.pdf
 *.png
 .DS_Store
-hallu-cite-checker/skill/research-paper-checker/scripts/installation.json
+scripts/installation.json

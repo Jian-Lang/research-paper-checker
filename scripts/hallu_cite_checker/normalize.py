@@ -12,16 +12,25 @@ _VENUES = {
     "cvpr": ["IEEE/CVF Conference on Computer Vision and Pattern Recognition",
              "IEEE Conference on Computer Vision and Pattern Recognition",
              "Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition",
-             "Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition"],
+             "Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition",
+             "Proceedings of the Computer Vision and Pattern Recognition Conference",
+             "Computer Vision and Pattern Recognition Conference"],
     "iccv": ["IEEE/CVF International Conference on Computer Vision",
              "IEEE International Conference on Computer Vision",
              "Proceedings of the IEEE/CVF International Conference on Computer Vision"],
     "eccv": ["European Conference on Computer Vision",
              "Computer Vision – ECCV", "Computer Vision - ECCV"],
+    "acl": ["Annual Meeting of the Association for Computational Linguistics",
+            "Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)"],
+    "kdd": ["ACM SIGKDD Conference on Knowledge Discovery and Data Mining",
+            "ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.1"],
+    "ccl": ["China national conference on Chinese computational linguistics",
+            "Chinese Computational Linguistics"],
     "iclr": ["International Conference on Learning Representations"],
     "icml": ["International Conference on Machine Learning",
              "Proceedings of the International Conference on Machine Learning"],
-    "aaai": ["Proceedings of the AAAI Conference on Artificial Intelligence"],
+    "aaai": ["Proceedings of the AAAI Conference on Artificial Intelligence",
+             "AAAI Conference on Artificial Intelligence"],
     "miccai": ["Medical Image Computing and Computer Assisted Intervention", "Medical Image Computing and Computer-Assisted Intervention", "proceedings of Medical Image Computing and Computer Assisted Intervention"],
     "acm mm": ["ACM International Conference on Multimedia"],
     "findings of acl": ["Findings of the Association for Computational Linguistics: ACL"],
@@ -73,6 +82,16 @@ def venue(value):
     s = re.sub(r"^the (?:thirteenth|fourteenth) ", "", s)
     s = re.sub(r"^advances in neural information processing systems \d+$", "advances in neural information processing systems", s)
     s = re.sub(r" -+ miccai$", "", s)
+    # Proceedings labels and a redundant acronym can vary, but an unknown
+    # suffix (workshop, Findings, track, or a different acronym) must survive.
+    s = re.sub(r"^proceedings of (?:the )?", "", s)
+    s = re.sub(r"^(?:the )?\d+(?:st|nd|rd|th)\s+", "", s)
+    for canonical, aliases in _VENUES.items():
+        known = {words(canonical), *(words(a) for a in aliases)}
+        for acronym in (canonical, "nips" if canonical == "neurips" else canonical):
+            if s.endswith(" " + acronym) and s[:-len(acronym)-1] in known:
+                s = s[:-len(acronym)-1]
+                break
     # Embedded conference years and ordinals are independently checked in audit.compare.
     for canonical, aliases in _VENUES.items():
         if s in {words(canonical), *(words(a) for a in aliases)}:
@@ -81,9 +100,13 @@ def venue(value):
 
 
 def authors(value):
+    def name(v):
+        s = text(v).replace('’', "'")
+        s = re.sub(r'\b(?:[a-z]\.){2,}', lambda m: ' '.join(re.findall(r'[a-z]', m[0])), s)
+        return s.replace('.', '')
     if isinstance(value, list):
-        return [text(v).replace(".", "") for v in value]
-    return [text(v).replace(".", "") for v in re.split(r"\s+and\s+", str(value)) if v.strip()]
+        return [name(v) for v in value]
+    return [name(v) for v in re.split(r"\s+and\s+", str(value)) if v.strip()]
 
 
 def name_parts(name):
@@ -144,6 +167,8 @@ def norm(field, value):
         return venue(value)
     if field == "publisher" and text(value) in {"springer", "springer nature", "springer nature switzerland", "springer international publishing"}:
         return "springer"
+    if field == "volume" and re.fullmatch(r"\d+,? main conference", words(value)):
+        return re.match(r"\d+", words(value))[0]
     if field == "pages":
         return re.sub(r"\s+", "", text(value).replace("–", "-").replace("—", "-").replace("--", "-"))
     if field == "url":

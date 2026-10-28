@@ -14,9 +14,19 @@ def same(field, a, b, ref, record):
     if field == "authors":
         return author_equal(a, b, ref.get("authors_truncated", False), record.get("authors_truncated", False))
     if field == "arxiv_id":
-        import re
         a, b = arxiv(a), arxiv(b)
         return a == b or (not re.search(r"v\d+$", a) and a == re.sub(r"v\d+$", "", b))
+    if field == 'url':
+        from urllib.parse import urlsplit
+        left, right = urlsplit(str(a)), urlsplit(str(b))
+        if (left.netloc == right.netloc == 'arxiv.org' and left.scheme in {'http', 'https'}
+                and right.scheme in {'http', 'https'} and not left.query and not right.query
+                and not left.fragment and not right.fragment):
+            base = r'/abs/((?:\d{4}\.\d{4,5}|[a-z-]+/\d{7}))'
+            lmatch = re.fullmatch(base, left.path)
+            rmatch = re.fullmatch(base + r'v[1-9]\d*', right.path)
+            if lmatch and rmatch and lmatch[1] == rmatch[1]:
+                return True
     return norm(field, a) == norm(field, b)
 
 
@@ -59,7 +69,7 @@ def compare(ref, record):
                     result = "AMBIGUOUS_FORMAT"
             if field == "venue" and result == "MATCH":
                 # Main-conference edition years/ordinals must not disappear in aliases.
-                if venue(value) in {"cvpr", "iccv", "iclr", "icml", "aaai", "miccai", "findings of acl"}:
+                if venue(value) in {"cvpr", "iccv", "iclr", "icml", "aaai", "miccai", "findings of acl", "acl", "kdd", "ccl"}:
                     left_years = re.findall(r"(?:19|20)\d{2}", str(value))
                     right_years = re.findall(r"(?:19|20)\d{2}", str(source[field]))
                     if left_years and any(y != str(ref["fields"].get("year")) for y in left_years):
@@ -82,6 +92,11 @@ def compare(ref, record):
                             expected = 1983 + n if venue(value) == "icml" and n >= 20 else (2012 + n if venue(value) == "iclr" else None)
                             if expected is not None and int(yr) != expected:
                                 result = "CONFLICT"
+        if field == 'venue' and result in {'CONFLICT', 'AMBIGUOUS_FORMAT'}:
+            if any(item['input'] == value and item['source'] == source.get(field)
+                   and item['source_sha256'] == record.get('sha256')
+                   for item in ref.get('_reviewed_venue_equivalences', [])):
+                result = 'MATCH'
         rows.append({"field": field, "input": value, "source": source.get(field), "result": result})
     return rows
 
@@ -131,7 +146,15 @@ def audit_reference(ref, records, run):
         source_missing.update(row["field"] for row in rows if row["result"] in {"SOURCE_MISSING", "PARTIAL_SOURCE_MATCH"})
         problems.extend("ambiguous_format:" + row["field"] for row in rows if row["result"] == "AMBIGUOUS_FORMAT")
         problems.extend("unsupported_field:" + row["field"] for row in rows if row["result"] == "UNSUPPORTED_FIELD")
-    if len({r["version_id"] for r, _ in primaries}) > 1:
+    coherent = bool(primaries) and all(
+        all(left['fields'].get(f) and right['fields'].get(f) and (
+            author_equal(left['fields'][f], right['fields'][f]) if f == 'authors' else
+            norm(f, left['fields'][f]) == norm(f, right['fields'][f]))
+            for f in ('title', 'authors', 'year', 'venue'))
+        and all(norm(f, left['fields'][f]) == norm(f, right['fields'][f])
+                for f in ('doi', 'arxiv_id') if left['fields'].get(f) and right['fields'].get(f))
+        for i, (left, _) in enumerate(primaries) for right, _ in primaries[i+1:])
+    if len({r["version_id"] for r, _ in primaries}) > 1 and not coherent:
         problems.append("multiple_primary_versions: choose one coherent citation version")
     if not primaries:
         problems.append("no_trusted_primary_evidence")
@@ -151,10 +174,36 @@ def audit_reference(ref, records, run):
                         for row in rows if row["result"] == "MATCH"}
     version_disputes = {row["field"] for row in conflicts} & alternate_fields
     problems.extend("alternative_version_matches:" + f for f in sorted(version_disputes))
-    undisputed_conflicts = [row for row in conflicts if row["field"] not in disputed_fields | version_disputes]
-    status = "REJECTED" if undisputed_conflicts and not ref.get('issues') else ("UNVERIFIED" if problems else "VERIFIED")
+    # Deposits may disagree even when neither matches the input. Keep that
+    # source uncertainty distinct from a confirmed citation error.
+    source_disputes = set()
+    for i, (left, left_rows) in enumerate(primaries):
+        supplied = {k: v for k, v in left["fields"].items() if k in ref["fields"]}
+        for right, right_rows in primaries[i + 1:]:
+            agreed = ({row['field'] for row in left_rows if row['result'] == 'MATCH'} &
+                      {row['field'] for row in right_rows if row['result'] == 'MATCH'})
+            source_disputes.update(row["field"] for row in compare(
+                {"fields": supplied}, right) if row["result"] == "CONFLICT"
+                and not (row['field'] == 'venue' and 'venue' in agreed)
+                and not (row['field'] == 'arxiv_id' and
+                         re.sub(r'v\d+$', '', arxiv(row['input'])) ==
+                         re.sub(r'v\d+$', '', arxiv(row['source']))))
+    problems.extend("trusted_sources_disagree:" + f for f in sorted(source_disputes))
+    undisputed_conflicts = [row for row in conflicts if row["field"] not in disputed_fields | version_disputes | source_disputes]
+    # Confirm each field against a source that actually supplies that conflict.
+    # An unrelated source dispute must not hide a separately established error;
+    # conversely, an official source missing a field cannot confirm its deposit.
+    confirmed_conflicts = [row for row in undisputed_conflicts if any(
+        r['kind'] not in {'crossref', 'datacite'} and any(
+            c['field'] == row['field'] and c['result'] == 'CONFLICT' and
+            c['source'] == row['source'] for c in rows) for r, rows in primaries)]
+    deposit_only = bool(undisputed_conflicts) and not confirmed_conflicts
+    if deposit_only:
+        problems.append("conflict_requires_official_confirmation")
+    status = "REJECTED" if confirmed_conflicts and not ref.get('issues') else ("UNVERIFIED" if problems else "VERIFIED")
     return {"id": ref["id"], "status": status, "fields": ref["fields"], "raw": ref.get("raw", ""), "locations": ref.get("locations", []),
             "problems": sorted(set(problems)), "conflicts": conflicts,
+            "confirmed_conflicts": confirmed_conflicts if not ref.get('issues') else [],
             "verified_fields": sorted(verified_fields),
             "unchecked_optional_fields": sorted((source_missing & OPTIONAL) - verified_fields),
             "acceptance_policy": "matching_google_scholar_export" if scholar_override else "official_version_comparison",
@@ -205,7 +254,7 @@ def discovery_candidates(ref, evidence, run):
     return candidates
 
 
-def audit(run, write_reports=True):
+def audit(run, write_reports=True, model_review=True):
     run = Path(run).resolve()
     manifest, evidence = load(run / "manifest.json"), load(run / "evidence.json")
     blockers = list(manifest.get("issues", []))
@@ -231,10 +280,52 @@ def audit(run, write_reports=True):
     for record in evidence.get("records", []):
         if record.get("ref_id") not in ids:
             blockers.append({"code": "orphan_evidence", "ref_id": record.get("ref_id")})
-    results = [audit_reference(ref, [e for e in evidence.get("records", []) if e.get("ref_id") == ref["id"]], run) for ref in refs]
+    review_context, review_errors = None, []
+    if model_review:
+        from .final_review import load_review
+        try:
+            review_context = load_review(run)
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            review_errors.append(str(exc))
+    results = []
+    decisions = {d['ref_id']:d for d in review_context['receipt']['decisions']} if review_context else {}
+    for ref in refs:
+        records = [e for e in evidence.get("records", []) if e.get("ref_id") == ref["id"]]
+        clean_ref = {k:v for k,v in ref.items() if not k.startswith('_reviewed_')}
+        baseline = audit_reference(clean_ref, records, run)
+        reviewed = dict(clean_ref)
+        reviewed['_reviewed_venue_equivalences'] = review_context['equivalences'].get(ref['id'], []) if review_context else []
+        result = audit_reference(reviewed, records, run) if reviewed['_reviewed_venue_equivalences'] else baseline
+        decision = decisions.get(ref['id'])
+        if review_context and baseline['status'] != 'VERIFIED' and not decision:
+            review_errors.append('New flagged reference lacks review: ' + ref['id'])
+        if decision:
+            if decision['outcome'] == 'resolved' and result['status'] != 'VERIFIED':
+                review_errors.append('Model resolution still lacks complete matching evidence: ' + ref['id'])
+            if decision['outcome'] == 'retained' and result['status'] == 'VERIFIED':
+                review_errors.append('Resolved reference must be recorded as resolved: ' + ref['id'])
+            if decision['outcome'] == 'suspected_fabrication':
+                if result['status'] == 'VERIFIED':
+                    review_errors.append('Verified identity cannot be labelled suspected fabrication: ' + ref['id'])
+                result['identity_finding'] = review_context['identity_findings'][ref['id']]
+            if decision['outcome'] == 'uncertain':
+                confirmed = result.get('confirmed_conflicts', [])
+                uncertain_fields = decision.get('uncertain_fields', [])
+                if confirmed and not uncertain_fields:
+                    review_errors.append('Downgrading a confirmed error requires explicit uncertain_fields: ' + ref['id'])
+                result['withheld_conflicts'] = [c for c in confirmed if c['field'] in uncertain_fields]
+                result['confirmed_conflicts'] = [c for c in confirmed if c['field'] not in uncertain_fields]
+                result['status'] = 'REJECTED' if result['confirmed_conflicts'] else 'UNVERIFIED'
+                result['problems'] = sorted(set(result['problems'] + ['model_review_uncertainty']))
+            result['model_review'] = {'automated_status': baseline['status'], **decision}
+        results.append(result)
     for ref, result in zip(refs, results):
         if not result['evidence']:
             result['discovery_candidates'] = discovery_candidates(ref, evidence, run)
+    if review_errors and review_context:
+        # Invalid review cannot clear even one automated finding.
+        results = [audit_reference({k:v for k,v in ref.items() if not k.startswith('_reviewed_')},
+            [e for e in evidence.get("records", []) if e.get("ref_id") == ref["id"]], run) for ref in refs]
     counts = Counter(r["status"] for r in results)
     passed = bool(refs) and not blockers and all(r["status"] == "VERIFIED" for r in results)
     report = {"schema_version": 1, "created_at": now(), "tool": "hallu-cite-checker/0.1.0",
@@ -243,10 +334,18 @@ def audit(run, write_reports=True):
               "execution": manifest.get('execution', {}),
               "validation_notes": load(run/'annotations.json') if (run/'annotations.json').exists() else {},
               "counts": {s: counts[s] for s in ("VERIFIED", "REJECTED", "UNVERIFIED")},
+              "risk_counts": {"suspected_fabrication": sum(bool(r.get('identity_finding')) for r in results)},
               "references": results, "retrieval_attempts": evidence.get("attempts", []),
               "limits": ["PASS is conditional on reviewed extraction, evidence acquisition, source accuracy and missing-field policy; it is not a universal zero-error guarantee.",
                          "Optional fields absent from all trusted records are disclosed, not inferred.",
                          "No search results or inaccessible sources prove nonexistence."]}
+    report['report_stage'] = 'final' if review_context and not review_errors else 'preliminary'
+    report['final_review'] = {
+        'completed': report['report_stage'] == 'final',
+        'reviewer': review_context['receipt']['reviewer'] if review_context else None,
+        'reviewed_count': len(decisions) if review_context and not review_errors else 0,
+        'errors': review_errors,
+        'decisions': list(decisions.values()) if review_context and not review_errors else []}
     if write_reports:
         save(run / "report.json", report)
         from .report import render

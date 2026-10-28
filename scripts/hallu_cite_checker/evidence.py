@@ -22,6 +22,8 @@ HOSTS = {
 HOSTS["official"].add("api.medrxiv.org")
 # Official API V2: https://docs.openreview.net/reference/api-v2/openapi-definition
 HOSTS["official"].add("api2.openreview.net")
+# Official ICLR proceedings and publisher-hosted citation exports.
+HOSTS["official"].add("proceedings.iclr.cc")
 
 
 def trusted(kind, url):

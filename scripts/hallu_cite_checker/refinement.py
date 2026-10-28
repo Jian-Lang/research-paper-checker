@@ -17,11 +17,15 @@ from .audit import audit, compare
 def matching_variants(ref, fields):
     return [v for v in reference_variants(ref)
             if norm('title',v['fields'].get('title','')) == norm('title',fields.get('title',''))
-            # Distinctive exact title plus first-author identity establishes a
-            # candidate. The full byline is checked by audit, including errors.
+            # Do not require the allegedly correct author to discover a wrong
+            # author. Exact title plus claimed conference/year can also anchor
+            # a candidate; the full byline remains a comparison target.
             and (author_equal(v['fields'].get('authors',[])[:1],fields.get('authors',[])[:1])
                  or sum(any(author_equal([a],[b]) for b in fields.get('authors',[]))
-                        for a in v['fields'].get('authors',[])) >= 2)]
+                        for a in v['fields'].get('authors',[])) >= 2
+                 or (v['fields'].get('venue') and fields.get('venue') and
+                     venue(v['fields']['venue']) == venue(fields['venue']) and
+                     v['fields'].get('year') and str(v['fields']['year']) == str(fields.get('year'))))]
 
 
 def select_crossref(run, ref, event):
@@ -101,12 +105,59 @@ def refine(run):
         titles = {norm('title',v['fields'].get('title','')) for v in reference_variants(ref)}
         links = {urljoin(url,href) for href,title in publisher_page(run/event['artifact']).links
                  if norm('title',title) in titles}
+        # Two distinct same-title candidates cannot be disambiguated by quietly
+        # taking the first link. Inspect them before importing a primary record.
+        if len(links) != 1:
+            return None
         records = []
         for link in sorted(links):
             record = import_publisher(ref,link)
             if record:
                 records.append(record)
         return records[0] if records else None
+
+    def proceedings_lookup(ref, existing, host='proceedings.neurips.cc'):
+        # Route by cited and captured deposit years; only the official export
+        # establishes metadata. Do not derive source fields from the input.
+        years = {str(ref['fields'].get('year', ''))}
+        years.update(str(r['fields'].get('year', '')) for r in existing
+                     if not validate_record(r, run))
+        for year in sorted(years):
+            if not re.fullmatch(r'20\d{2}', year):
+                continue
+            index = 'https://' + host + '/paper_files/paper/' + year
+            event = get('official', index)
+            if event.get('error'):
+                continue
+            titles = {norm('title', v['fields'].get('title', ''))
+                      for v in reference_variants(ref)}
+            links = {urljoin(index, href) for href, title in
+                     publisher_page(run / event['artifact']).links
+                     if norm('title', title) in titles}
+            if len(links) != 1:
+                continue
+            for link in sorted(links):
+                page_event = get('official', link)
+                if page_event.get('error'):
+                    continue
+                bib_links = {urljoin(link, href) for href, label in
+                             publisher_page(run / page_event['artifact']).links
+                             if label.casefold() == 'bibtex'}
+                for bib_url in sorted(bib_links):
+                    bib_event = get('official', bib_url)
+                    if bib_event.get('error'):
+                        continue
+                    try:
+                        artifact = run / bib_event['artifact']
+                        fields = parse_artifact(artifact, 'bibtex')
+                        if matching_variants(ref, fields):
+                            version = 'doi:' + fields['doi'] if fields.get('doi') else 'official:' + link
+                            return add_evidence(run, ref['id'], artifact, 'official',
+                                bib_event.get('final_url', bib_url), 'bibtex',
+                                version_id=version)
+                    except (ValueError, KeyError, TypeError) as exc:
+                        bib_event['import_error'] = str(exc)
+        return None
 
     def ieee_lookup(ref):
         urls = set()
@@ -168,12 +219,19 @@ def refine(run):
     evidence = load(run/'evidence.json')
     for ref in manifest['references']:
         existing = [r for r in evidence['records'] if r['ref_id']==ref['id']]
-        if existing:
+        conflicting = any(c['result'] == 'CONFLICT' for r in existing
+                          if r['role'] == 'primary' and not validate_record(r, run)
+                          for c in compare(ref, r))
+        if existing and not conflicting:
+            continue
+        if existing and any(r['kind'] == 'official' for r in existing):
             continue
         claimed = venue(ref['fields'].get('venue',''))
         year = ref['fields'].get('year','')
         record = None
-        if claimed=='icml':
+        if claimed == 'neurips':
+            record = proceedings_lookup(ref, existing)
+        elif claimed=='icml':
             # Maintained proceedings volume for the 2023 ICML main conference.
             if year=='2023':
                 record = index_lookup(ref,'https://proceedings.mlr.press/v202/')
@@ -183,8 +241,10 @@ def refine(run):
                 record = ieee_lookup(ref)
         elif claimed=='iclr':
             record = openreview_lookup(ref)
+            if not record:
+                record = proceedings_lookup(ref, existing, 'proceedings.iclr.cc')
         # Crossref is discovery; absence there is never proof of nonexistence.
-        if not record:
+        if not record and not existing:
             url='https://api.crossref.org/works?'+urlencode({'query.bibliographic':
                 ref['fields']['title']+' '+ref['fields']['authors'][0],'rows':20})
             event = get('crossref',url)

@@ -79,7 +79,7 @@ For source pages without structured exports create a *reviewed extraction*, not 
 hallu-cite-checker add-evidence RUN REF extracted.json --kind official --url 'https://openreview.net/forum?id=...' --format reviewed_metadata --supporting-artifact saved-source.html --version-id 'conference:iclr:2024:example'
 ```
 
-Retain source wording, then let the comparator normalize formatting. If the venue contains a year or parenthetical alias not supported by the deterministic table, verify the equivalence before adding a maintained alias/normalizer; do not change paper fields. Never synthesize an export by combining preprint year, conference venue and journal pages.
+Retain source wording, then let the comparator normalize formatting. For unsupported venue wording, the host model may record a source-backed per-reference equivalence during [final model review](final-review.md); no code edit or user approval is needed. Do not change paper fields or waive years, editions or workshop distinctions. Never synthesize an export by combining preprint year, conference venue and journal pages.
 
 For a linked arXiv version of a conference citation:
 
@@ -89,15 +89,17 @@ hallu-cite-checker fetch RUN REF --kind arxiv --id 2401.01234 --role linked_vers
 
 The evidence artifact must identify that preprint; preserve the evidence supporting the cross-version relationship. The v0.1 engine also requires matching title and authors for linked versions. A genuine changed-title version remains UNVERIFIED until a reviewed relationship adapter is implemented; never waive this check by changing the submitted title. All claimed identifiers need matching evidence. An incorrect DOI cannot disappear under the missing-optional-field rule.
 
-The maintained source-host registry is in `hallu_cite_checker/evidence.py`. Add an official host only after inspecting and establishing its ownership; list that change in the report. Do not treat arbitrary mirrors or search-result pages as official. Source capture is trusted operator/agent work: a source URL and file hash alone cannot cryptographically prove web provenance.
+The maintained source-host registry is in `scripts/hallu_cite_checker/evidence.py`. Add an official host only after inspecting and establishing its ownership; list that change in the report. Do not treat arbitrary mirrors or search-result pages as official. Source capture is trusted operator/agent work: a source URL and file hash alone cannot cryptographically prove web provenance.
 
 ## 3. Compare and gate
+
+A conflict found only in Crossref/DataCite requires direct publisher or conference confirmation before REJECTED. Existing deposit evidence must not suppress official lookup. Preserve disagreements between trusted sources as UNVERIFIED, including fields where neither source matches the input; retain a fully matching Scholar export exception. NeurIPS fallback follows the official year index, exact title, paper page and actual BibTeX export; never infer pages or publication year from the index URL.
 
 ```sh
 hallu-cite-checker audit RUN
 ```
 
-Exit codes: 0 PASS; 1 FAIL; 2 execution failure. Reports: `report.json`, `report.md`, `report.html`.
+Exit codes: 0 PASS; 1 FAIL; 2 execution failure. `audit` writes preliminary `report.json`, `report.md`, `report.html`. Complete [final model review](final-review.md), then use `finalize RUN` to export final reports. Review runs within the existing skill session and authorization.
 
 - VERIFIED: verified identity/core fields and any claimed identifiers, no source conflict or unresolved extraction problem. Missing optional source fields are listed, not inferred.
 - REJECTED: observed input/source conflict without supporting alternative-version metadata or a fully matching Scholar export. Check legitimate alternative versions before declaring an author-order conflict a definite error. Preserve differences and source links.

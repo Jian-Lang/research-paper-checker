@@ -12,6 +12,9 @@ from .audit import audit
 def main(argv=None):
     p = argparse.ArgumentParser(prog="hallu-cite-checker", description="Skill-driven citation metadata audit. Every unresolved item blocks PASS.")
     sub = p.add_subparsers(dest="command", required=True)
+    for action in ('review', 'finalize'):
+        s = sub.add_parser(action, help='Prepare model review packet' if action == 'review' else 'Validate complete model review and export final reports')
+        s.add_argument('run')
     s = sub.add_parser('refine', help='Resolve PDF formatting against saved evidence and try official fallbacks')
     s.add_argument('run')
     s = sub.add_parser('check', help='Extract PDF candidates, query live metadata, and write reports; coverage review remains required')
@@ -55,7 +58,7 @@ def main(argv=None):
     s.add_argument("artifact")
     s.add_argument("--kind", choices=("google_scholar", "official", "crossref", "arxiv", "datacite"), required=True)
     s.add_argument("--url", required=True)
-    s.add_argument("--format", choices=("bibtex", "crossref", "arxiv", "datacite", "reviewed_metadata", "citation_html"), required=True)
+    s.add_argument("--format", choices=("bibtex", "crossref", "arxiv", "datacite", "reviewed_metadata", "citation_html", "publisher_html", "openreview"), required=True)
     s.add_argument("--version-id", required=True)
     s.add_argument("--role", choices=("primary", "linked_version", "alternative_version"), default="primary")
     s.add_argument("--relation", default="")
@@ -78,6 +81,18 @@ def main(argv=None):
         child.allow_abbrev = False
     args = p.parse_args(argv)
     try:
+        if args.command in {'review', 'finalize'}:
+            from .final_review import start_review, finalize
+            if args.command == 'review':
+                packet = start_review(args.run)
+                print(json.dumps({'packet':str(Path(args.run)/'review-packet.json'),
+                    'packet_fingerprint':packet['packet_fingerprint'], 'targets':len(packet['targets']),
+                    'model_review_performed':False}))
+                return 0
+            report = finalize(args.run)
+            print(json.dumps({'verdict':report['verdict'],'counts':report['counts'],
+                'report_stage':report['report_stage'],'reviewed':report['final_review']['reviewed_count']}))
+            return 0 if report['verdict'] == 'PASS' else 1
         if args.command == 'refine':
             from .refinement import refine
             result = refine(args.run)
