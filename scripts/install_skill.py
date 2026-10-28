@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the self-contained skill runtime and scoped Codex entry."""
+"""Install the parent skill, its citation checker and scoped Codex entry."""
 import argparse
 import json
 from pathlib import Path
@@ -10,6 +10,8 @@ import venv
 from datetime import datetime
 
 PROJECT = Path(__file__).resolve().parents[1]
+CHECKER_RELATIVE = Path('checkers/hallu-cite-checker')
+CHECKER = PROJECT/CHECKER_RELATIVE
 
 
 def write_json(path, data):
@@ -31,8 +33,8 @@ def command(argv, *, cwd=None, env=None, accepted=(0,), log=None):
 
 def snapshot(path):
     path.mkdir(parents=True)
-    shutil.copy2(PROJECT/'pyproject.toml', path/'pyproject.toml')
-    shutil.copytree(PROJECT/'scripts/hallu_cite_checker', path/'scripts/hallu_cite_checker',
+    shutil.copy2(CHECKER/'pyproject.toml', path/'pyproject.toml')
+    shutil.copytree(CHECKER/'scripts/hallu_cite_checker', path/'scripts/hallu_cite_checker',
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
 
 
@@ -46,7 +48,7 @@ def build_runtime(root, source, log):
 
 
 def copy_skill(target):
-    for name in ('SKILL.md', 'references', 'agents', 'scripts', 'pyproject.toml'):
+    for name in ('SKILL.md', 'agents', 'scripts', 'checkers'):
         source = PROJECT/name
         destination = target/name
         if source.is_dir():
@@ -55,18 +57,28 @@ def copy_skill(target):
         else:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
-    # Remove the obsolete duplicated test payload from earlier installations.
-    shutil.rmtree(target/'scripts/tests', ignore_errors=True)
+    # Retire only managed files from the former flat installation. Keep user
+    # files and reports intact; the active checker now lives under checkers/.
+    for relative in ('scripts/tests', 'scripts/hallu_cite_checker'):
+        shutil.rmtree(target/relative, ignore_errors=True)
+    for relative in ('scripts/run_checker.py', 'scripts/installation.json',
+                     'references/hallu-cite-checker.md', 'references/final-review.md',
+                     'pyproject.toml'):
+        (target/relative).unlink(missing_ok=True)
+    legacy_references = target/'references'
+    if legacy_references.is_dir() and not any(legacy_references.iterdir()):
+        legacy_references.rmdir()
 
 
 def configure_installation(skill, python, output, config):
     config_data = {'output_root': str(output), 'time_budget_seconds': 300,
                    'request_timeout': 10, 'max_attempts': 2, 'workers': 1}
     write_json(config, config_data)
-    entry = skill/'scripts/run_checker.py'
+    checker = skill/CHECKER_RELATIVE
+    entry = checker/'scripts/run_checker.py'
     info = {'python': str(python), 'entry': str(entry), 'config': str(config),
             'output_root': str(output), 'command_prefix': [str(python), '-I', str(entry)]}
-    write_json(skill/'scripts/installation.json', info)
+    write_json(checker/'scripts/installation.json', info)
     return info
 
 

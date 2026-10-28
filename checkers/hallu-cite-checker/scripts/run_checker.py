@@ -16,7 +16,7 @@ def within_output(path, root):
 def main():
     installation = Path(__file__).with_name('installation.json')
     if not installation.is_file():
-        raise ValueError('Run scripts/install_skill.py once before using the skill')
+        raise ValueError('Run the parent repository scripts/install_skill.py before using this checker')
     installed = json.loads(installation.read_text(encoding='utf-8'))
     os.environ['HALLU_CITE_CHECKER_CONFIG'] = installed['config']
     from hallu_cite_checker.config import settings

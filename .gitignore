@@ -10,4 +10,4 @@ REPORTS/*
 *.pdf
 *.png
 .DS_Store
-scripts/installation.json
+**/scripts/installation.json

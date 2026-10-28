@@ -1,23 +1,27 @@
 # Research Paper Checker
 
-A Codex skill for evidence-based citation metadata checks in PDF papers and LaTeX / Overleaf projects. The current subtool, **hallu-cite-checker**, checks titles, authors, years, venues and identifiers; it does not assess whether citations support claims.
+A parent Codex skill that routes research paper checks to dedicated checkers. The current checker, **hallu-cite-checker**, audits citation titles, authors, years, venues and identifiers in PDF papers and LaTeX / Overleaf projects. It does not assess whether citations support claims.
 
 ## Structure
 
 ```text
 research-paper-checker/
-├── SKILL.md                     Parent skill entry
-├── agents/                      Codex display metadata
-├── references/                  Citation workflow and final review rules
+├── SKILL.md                         Parent entry and checker index
+├── agents/                          Parent Codex display metadata
 ├── scripts/
-│   ├── install_skill.py         Installer
-│   ├── run_checker.py           Fixed audit entry
-│   └── hallu_cite_checker/      Python implementation of the citation subtool
-├── pyproject.toml               Runtime dependencies and packaging
-└── REPORTS/                    Generated reports (ignored by Git)
+│   └── install_skill.py             Shared installer
+├── checkers/
+│   └── hallu-cite-checker/
+│       ├── SKILL.md                 Citation checker instructions
+│       ├── references/              Citation workflow and final review rules
+│       ├── scripts/
+│       │   ├── run_checker.py       Fixed citation audit entry
+│       │   └── hallu_cite_checker/  Citation checker Python package
+│       └── pyproject.toml           Citation checker dependencies
+└── REPORTS/                         Shared generated reports (ignored by Git)
 ```
 
-`hallu_cite_checker` is a Python package, not another skill. There is one skill entry at the repository root. Tests, sample papers, development utilities, local configuration and generated evidence are excluded from this distribution.
+The parent owns routing, installation and the shared report location. Each checker owns its instructions, references, implementation and dependencies. `hallu_cite_checker` is the citation checker's Python package. Tests, sample papers, development utilities, local configuration and generated evidence are excluded from this distribution.
 
 ## Install
 
@@ -29,7 +33,9 @@ cd research-paper-checker
 python3 scripts/install_skill.py
 ```
 
-Installation creates an isolated runtime, installs the skill into `~/.codex/skills/research-paper-checker`, and configures `REPORTS/` as the default output directory. Use `--output-root /path/to/reports` to choose another location. The exact paths are saved in the installed skill's `scripts/installation.json`.
+Installation creates an isolated runtime, installs the parent and its `checkers/` subtree into `~/.codex/skills/research-paper-checker`, and configures the repository's `REPORTS/` as the default output directory. Use `--output-root /path/to/reports` to choose another location.
+
+The citation checker's interpreter, fixed entry and output root are recorded in `~/.codex/skills/research-paper-checker/checkers/hallu-cite-checker/scripts/installation.json`. The installed layout mirrors this repository. Re-running the installer upgrades the former flat layout and removes its obsolete managed entry/configuration files; existing reports remain intact.
 
 The installer saves a scoped Codex command rule. Restart Codex to load it; managed policy may override local rules. Audit actions use the fixed entry and do not request incremental permissions.
 
@@ -46,7 +52,7 @@ Each run creates `REPORTS/<paper-name>-<timestamp>-<id>/` containing:
 - `report.json`: detailed field comparisons and decisions.
 - Evidence, extraction and review artifacts supporting the findings.
 
-The skill reviews every bibliography entry and rechecks flagged results before final export. No separate model API is required. Automatic PDF extraction supports continuously numbered author-year bibliographies; other layouts require the skill's reviewed extraction workflow.
+The parent reads its checker index and loads `checkers/hallu-cite-checker/SKILL.md` for citation requests. The checker reviews every bibliography entry and rechecks flagged results before final export. No separate model API is required. Automatic PDF extraction supports continuously numbered author-year bibliographies; other layouts require the checker's reviewed extraction workflow.
 
 ## Decisions
 
@@ -58,4 +64,4 @@ The skill reviews every bibliography entry and rechecks flagged results before f
 
 Actual Google Scholar citation exports, official publishers/proceedings, Crossref and arXiv are trusted. Every rejected or unverified entry blocks PASS. Missing optional source fields are disclosed; PASS is conditional on extraction and source accuracy.
 
-[Skill instructions](SKILL.md) · [Citation workflow](references/hallu-cite-checker.md) · [Final review](references/final-review.md)
+[Parent / checker index](SKILL.md) · [Citation checker](checkers/hallu-cite-checker/SKILL.md) · [Citation workflow](checkers/hallu-cite-checker/references/hallu-cite-checker.md) · [Final review](checkers/hallu-cite-checker/references/final-review.md)
