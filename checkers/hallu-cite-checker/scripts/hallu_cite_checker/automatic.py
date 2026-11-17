@@ -194,9 +194,34 @@ def populate(run):
 
 
 def check_pdf(pdf, run):
+    """Prepare input for host-model extraction; no bibliography grammar is assumed."""
     run = Path(run)
-    inventory_pdf(pdf, run)
-    manifest = populate(run)
+    manifest = inventory_pdf(pdf, run)
+    manifest['execution'] = {'mode':'awaiting_model_extraction',
+        'automatic_pdf_candidates':False, 'fresh_network_verification':False}
+    save(run/'manifest.json', manifest)
+    save(run/'extraction-review.json', {
+        'stage':'awaiting_model_extraction', 'performed_by':'host_model',
+        'instructions':'Inspect all pages and bibliography images. Design extraction for this PDF, write every reference into manifest.json, confirm coverage, then run verify RUN. Do not stop at this handoff or call an empty inventory a completed audit.'})
+    return audit(run)
+
+
+def verify_pdf(run):
+    """Query sources only after the host has reconciled the complete inventory."""
+    from .io import fingerprint
+    run = Path(run)
+    manifest = load(run/'manifest.json')
+    coverage = manifest.get('coverage', {})
+    refs = manifest.get('references', [])
+    if (manifest.get('mode') != 'pdf' or not refs or manifest.get('issues')
+        or not coverage.get('reviewed')
+        or coverage.get('reference_count') != len(refs)
+        or coverage.get('reference_fingerprint') != fingerprint(refs)):
+        raise ValueError('Complete host-model extraction and confirm-coverage before verify; empty, unresolved or stale inventories cannot start verification')
+    manifest['execution'] = {**manifest.get('execution', {}),
+        'mode':'model_extracted_network_check', 'fresh_network_verification':True,
+        'automatic_pdf_candidates':False}
+    save(run/'manifest.json', manifest)
     audit(run)  # Always deliver a provisional report before networking.
     config = settings()
     deadline = time.monotonic() + config['time_budget_seconds']

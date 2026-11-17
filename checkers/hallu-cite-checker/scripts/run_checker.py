@@ -25,7 +25,7 @@ def main():
     if not argv or argv[0] in ('-h', '--help'):
         from hallu_cite_checker.cli import main as cli
         return cli(argv)
-    allowed = {'pdf', 'latex', 'replay', 'check', 'refine', 'preview', 'capture', 'write-json', 'open-report',
+    allowed = {'pdf', 'latex', 'replay', 'check', 'verify', 'refine', 'preview', 'capture', 'write-json', 'open-report',
                'confirm-coverage', 'add-evidence', 'fetch', 'discover', 'audit', 'review', 'finalize'}
     command = argv[0]
     if command not in allowed:

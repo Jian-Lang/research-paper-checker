@@ -246,7 +246,7 @@ def refine(run):
         # Crossref is discovery; absence there is never proof of nonexistence.
         if not record and not existing:
             url='https://api.crossref.org/works?'+urlencode({'query.bibliographic':
-                ref['fields']['title']+' '+ref['fields']['authors'][0],'rows':20})
+                ref['fields']['title']+' '+' '.join(ref['fields'].get('authors',[])[:1]),'rows':20})
             event = get('crossref',url)
             if not event.get('error'):
                 record = select_crossref(run,ref,event)

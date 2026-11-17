@@ -52,7 +52,7 @@ Each run creates `REPORTS/<paper-name>-<timestamp>-<id>/` containing:
 - `report.json`: detailed field comparisons and decisions.
 - Evidence, extraction and review artifacts supporting the findings.
 
-The parent reads its checker index and loads `checkers/hallu-cite-checker/SKILL.md` for citation requests. The checker reviews every bibliography entry and rechecks flagged results before final export. No separate model API is required. Automatic PDF extraction supports continuously numbered author-year bibliographies; other layouts require the checker's reviewed extraction workflow.
+The parent reads its checker index and loads `checkers/hallu-cite-checker/SKILL.md` for citation requests. The checker reviews every bibliography entry and rechecks flagged results before final export. No separate model API is required. For PDFs, `check` prepares page text for the host model, which designs extraction for the current layout and visually reconciles every entry. After coverage confirmation, `verify` runs live metadata lookup. No fixed bibliography format or separate model API is required.
 
 ## Decisions
 

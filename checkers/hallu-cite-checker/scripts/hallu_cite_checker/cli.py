@@ -17,7 +17,9 @@ def main(argv=None):
         s.add_argument('run')
     s = sub.add_parser('refine', help='Resolve PDF formatting against saved evidence and try official fallbacks')
     s.add_argument('run')
-    s = sub.add_parser('check', help='Extract PDF candidates, query live metadata, and write reports; coverage review remains required')
+    s = sub.add_parser('verify', help='Query live metadata for a complete host-model PDF inventory')
+    s.add_argument('run')
+    s = sub.add_parser('check', help='Extract PDF pages for host-model bibliography extraction; continue with verify')
     s.add_argument('input')
     s.add_argument('--out')
     s = sub.add_parser('preview', help='Render original PDF pages for skill extraction review')
@@ -98,6 +100,11 @@ def main(argv=None):
             result = refine(args.run)
             print(json.dumps({'run':str(Path(args.run).resolve()),'counts':result['counts'],'blockers':result['blockers'],'verdict':result['verdict']}))
             return 0 if result['verdict']=='PASS' else 1
+        if args.command == 'verify':
+            from .automatic import verify_pdf
+            result = verify_pdf(args.run)
+            print(json.dumps({'run':str(Path(args.run).resolve()),'counts':result['counts'],'blockers':result['blockers'],'verdict':result['verdict']}))
+            return 0 if result['verdict']=='PASS' else 1
         if args.command == 'check':
             from .automatic import check_pdf
             from .config import new_run
@@ -105,8 +112,10 @@ def main(argv=None):
             if out.exists():
                 raise ValueError('Check output must be a fresh directory')
             result = check_pdf(args.input, out)
-            print(json.dumps({'run':str(out.resolve()),'counts':result['counts'],'blockers':result['blockers'],'verdict':result['verdict']}))
-            return 0 if result['verdict']=='PASS' else 1
+            print(json.dumps({'run':str(out.resolve()),'stage':'awaiting_model_extraction',
+                'next_action':'Host model: inspect pages, write manifest references, confirm-coverage, then verify RUN',
+                'audit_complete':False}))
+            return 0
         elif args.command == 'preview':
             import subprocess
             manifest = load(Path(args.run)/'manifest.json')
